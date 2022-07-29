@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<flow name="netsuite-salesforce-item-prc-apiFlow" doc:id="be38a7dc-752b-4711-92ca-684910d2238c" >
+		<http:listener doc:name="/item" doc:id="294e3f45-7898-4c8a-a57d-e0ba6992462f" config-ref="HTTP_Listener_config" path="/item"/>
+		<os:retrieve doc:name="execTime" doc:id="5b9e1f6f-0240-4138-b2a3-c8725aeee161" key="execTime" objectStore="Object_store" target="LastExecTime">
+			<os:default-value ><![CDATA[#["2020-07-19T11:17:45.813317Z" as DateTime as String{format:"yyyy-MM-dd'T'hh:mm:ss.SSS'-07:00'"}]]]></os:default-value>
+		</os:retrieve>
+		<set-variable value="#[now() as DateTime as String{format:&quot;yyyy-MM-dd'T'hh:mm:ss.SSS'-07:00'&quot;}]" doc:name="currentExecTime" doc:id="9422371a-95e9-4fad-8728-d58cbe1ee429" variableName="currentExecTime"/>
+		<http:request method="GET" doc:name="netsuite" doc:id="f8ee3402-1c1e-48e4-b9ff-06f1c9ccf8fe" config-ref="Netsuite_Http_Request_Config" path="/netsuite/search">
+			<http:headers ><![CDATA[#[output application/json
+---
+{
+	client_secret :  Mule::p('secure::netsuite.sys.api.client_secret'),
+	client_id : Mule::p('secure::netsuite.sys.api.client_id')
+}]]]></http:headers>
+			<http:query-params ><![CDATA[#[output application/java
+---
+{
+	"operator" : "after",
+	"time" : vars.LastExecTime,
+	"searchKey" : "ItemSearchBasic"
+}]]]></http:query-params>
+		</http:request>
+		<validation:is-not-empty-collection doc:name="Is not empty collection" doc:id="cc2bf308-750e-496f-8ee6-d7d58a656e6e" config-ref="Validation_Config" message='#["No New Item Found"]'/>
+		<ee:transform doc:name="salesforce upsert input payload" doc:id="98a2df4e-849b-455b-8431-25c7caf3747d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.payload.record map {
+    name: $.itemId,
+    salesDescription__c: $.salesDescription,
+    costEstimateType__c: $.costEstimateType,
+    costEstimateUnits__c: $.costEstimateUnits,
+    enforceMinQtyInternally__c: $.enforceMinQtyInternally,
+    useMarginalRates__c: $.useMarginalRates,
+    overallQuantityPricingType__c: $.overallQuantityPricingType,
+    minimumQuantityUnits__c: $.minimumQuantityUnits,
+    isDonationItem__c: $.isDonationItem,
+    showDefaultDonationAmount__c: $.showDefaultDonationAmount,
+    dontShowPrice__c: $.dontShowPrice,
+    outOfStockBehavior__c: $.outOfStockBehavior,
+    displayName__c: $.displayName
+}
+ ]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="salesforce" doc:id="41b151e1-c895-4037-9c4b-72cca8b641fc" config-ref="Salesforce_Http_Request_Config" path="/salesforce/upsert">
+			<http:headers><![CDATA[#[output application/json
+---
+{
+	client_secret :  Mule::p('secure::salesforce.sys.api.client_secret'),
+	client_id : Mule::p('secure::salesforce.sys.api.client_id')
+}]]]></http:headers>
+			<http:query-params><![CDATA[#[output application/java
+---
+{
+	"externalId" : "Id",
+	"objectType" : "Item__c"
+}]]]></http:query-params>
+		</http:request>
+		<ee:transform doc:name="vars.errorObject" doc:id="6b93cea0-5c6d-49cf-bbfc-362f186e6a05" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="errorObject" ><![CDATA[%dw 2.0
+output application/json
+var count = 0
+var s = payload.items map  (if ($.successful == false) 
+{ 
+    "id": $.id,
+    "exception" : true,
+    "statusCode" : $.statusCode,
+    "ErrorDescription" : $.payload.errors.message[0],
+    "Successful" : $.successful
+} else null
+)
+---
+s filter ((item, index) -> item !=null)]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<choice doc:name="if error occurs" doc:id="9c697ec0-9875-4404-8c07-97d05050db16" >
+			<when expression="#[!(isEmpty(vars.errorObject))]">
+				<email:send doc:name="if error occurs" doc:id="db34ea85-41bf-4103-a98b-539b3e51c7a0" config-ref="Email_SMTP" fromAddress="#[Mule::p('secure::smtp.fromAddress')]" subject="errors">
+			<email:to-addresses>
+				<email:to-address value="${secure::smtp.toAddress}" />
+			</email:to-addresses>
+					<email:body >
+						<email:content ><![CDATA[#[vars.errorObject]]]></email:content>
+					</email:body>
+		</email:send>
+			</when>
+			<otherwise >
+				<logger level="INFO" doc:name="if there is no errror" doc:id="47fd7745-62f3-4a22-82e9-a61aaa9342ce" message='#["There are no errors"]'/>
+			</otherwise>
+		</choice>
+		<os:store doc:name="execTime" doc:id="790fc4f5-b079-40f8-aed4-e03c74aad373" key="execTime" objectStore="Object_store">
+			<os:value ><![CDATA[#[vars.currentExecTime]]]></os:value>
+		</os:store>
+	</flow>
+</mule>

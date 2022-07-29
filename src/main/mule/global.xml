@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+	xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+	xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="14dee21e-e2df-4680-b780-e92cc325c1a4" >
+		<http:listener-connection host="0.0.0.0" port="${secure::http.port}" />
+	</http:listener-config>
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="20827ee8-5771-4199-ac6e-3562d6d50f4d" maxEntries="1000" entryTtl="15" entryTtlUnit="MINUTES" expirationInterval="20" />
+	<validation:config name="Validation_Config" doc:name="Validation Config" doc:id="8df24d4e-6224-4a69-884f-c3d763461f56" />
+	<http:request-config name="Netsuite_Http_Request_Config" doc:name="HTTP Request configuration" doc:id="bb9085b8-b97c-4699-bd4f-fccd39ca743d" basePath="/${secure::netsuite.sys.api.basePath}" >
+		<http:request-connection host="${secure::netsuite.sys.api.host}" port="${secure::netsuite.sys.api.port}" />
+	</http:request-config>
+	<http:request-config name="Salesforce_Http_Request_Config" doc:name="HTTP Request configuration" doc:id="821ab2ab-ffcd-412f-854d-92de284f0a80" basePath="/${secure::salesforce.sys.api.basePath}" >
+		<http:request-connection host="${secure::salesforce.sys.api.host}" port="${secure::salesforce.sys.api.port}" />
+	</http:request-config>
+	<configuration doc:name="Configuration" doc:id="1d34d362-609e-4ec4-94d4-1524555e0877" defaultErrorHandler-ref="common-error-handler" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="18ae49f3-87aa-4e73-bac8-64d3519a5061" file="config\netsuite-salesforce-prc-api-${env}.yaml" key="${enc.key}"/>
+	<email:smtp-config name="Email_SMTP" doc:name="Email SMTP" doc:id="431bcf56-24a4-4bca-bc96-036164099a9b" >
+		<email:smtp-connection host="${secure::smtp.host}" port="${secure::smtp.port}" user="${secure::smtp.user}" password="${secure::smtp.password}" connectionTimeout="30" readTimeout="30" writeTimeout="30">
+			<email:properties >
+				<email:property key="mail.smtp.starttls.enable" value="true" />
+			</email:properties>
+		</email:smtp-connection>
+	</email:smtp-config>
+</mule>
